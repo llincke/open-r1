@@ -1,13 +1,15 @@
 #!/bin/bash
-#SBATCH --job-name=open_r1
+#SBATCH --job-name=off_policy_grpo
+#SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --exclusive
 #SBATCH --gres=gpu:4
-#SBATCH --partition=gpu_a100_il
+#SBATCH --partition=gpu_a100_il,gpu_h100_il,gpu_h100
 #SBATCH --output=./logs/%x-%j.out
 #SBATCH --error=./logs/%x-%j.err
 #SBATCH --requeue
 #SBATCH --time=48:00:00
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=lele-2002@t-online.de
 
 
 if [[ "$*" == *"--help"* ]]; then
@@ -117,18 +119,34 @@ MASTER_PORT=6000
 TRAIN_NODES=("${NODELIST[@]}")
 
 USE_VLLM="false"
-if [[ -f "$CONFIG_FILE" ]] && grep -qE '^\s*use_vllm:\s*true' "$CONFIG_FILE"; then
+VLLM_MODE=""
+if [[ -f "$CONFIG_FILE" ]]; then
+  if grep -qE '^\s*use_vllm:\s*true' "$CONFIG_FILE"; then
     USE_VLLM="true"
+  fi
+  # read vllm_mode from the config (if present)
+  VLLM_MODE=$(grep -E '^\s*vllm_mode:' "$CONFIG_FILE" | awk '{print $2}' || true)
 fi
 # if using vllm
+export CUDA_VISIBLE_DEVICES=0,1,2,3
 if [[ "$USE_VLLM" == "true" ]]; then
-     TRAIN_NODES=("${NODELIST[@]:0:$((NUM_NODES - 1))}")
-     VLLM_NODE=${NODELIST[-1]} # Last node
-     WORLD_SIZE=$((WORLD_SIZE - GPUS_PER_NODE))
-     NUM_NODES=$((NUM_NODES - 1))
-     srun --nodes=1 --ntasks=1 --nodelist=$VLLM_NODE trl vllm-serve --model $MODEL --revision $REVISION --tensor_parallel_size $TP --data_parallel_size $DP &
-
-     OPTIONAL_ARGS="$OPTIONAL_ARGS --vllm_server_host=$VLLM_NODE"
+  # Only start a separate vLLM server when vllm_mode==server and we have >1 node available.
+  if [[ "$VLLM_MODE" == "server" ]]; then
+    if [[ "$NUM_NODES" -lt 2 ]]; then
+      echo "Warning: vllm_mode=server requested but only $NUM_NODES node(s) allocated. Falling back to colocate mode."
+      VLLM_MODE="colocate"
+    else
+      TRAIN_NODES=("${NODELIST[@]:0:$((NUM_NODES - 1))}")
+      VLLM_NODE=${NODELIST[-1]} # Last node
+      WORLD_SIZE=$((WORLD_SIZE - GPUS_PER_NODE))
+      NUM_NODES=$((NUM_NODES - 1))
+      srun --nodes=1 --ntasks=1 --nodelist=$VLLM_NODE trl vllm-serve --model $MODEL --revision $REVISION --tensor_parallel_size $TP --data_parallel_size $DP &
+      OPTIONAL_ARGS="$OPTIONAL_ARGS --vllm_server_host=$VLLM_NODE"
+    fi
+  else
+    # colocate: do nothing special here; trainer will start colocated vLLM instances in-process
+    echo "vLLM configured in colocate mode; no external server will be started."
+  fi
 fi
 
 # force crashing on nccl issues like hanging broadcast
