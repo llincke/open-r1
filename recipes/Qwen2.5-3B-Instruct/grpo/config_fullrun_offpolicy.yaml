@@ -1,14 +1,14 @@
 # Model arguments
-model_name_or_path: Qwen/Qwen2.5-1.5B-Instruct
+model_name_or_path: Qwen/Qwen2.5-3B-Instruct
 model_revision: main
 torch_dtype: bfloat16
 attn_implementation: sdpa  # flash_attn deinstalliert
 
 # Data training arguments
-dataset_name: hiyouga/math12k #open-r1/DAPO-Math-17k-Processed #hiyouga/math12k #open-r1/OpenR1-Math-220k
+dataset_name: open-r1/DAPO-Math-17k-Processed #hiyouga/math12k #open-r1/OpenR1-Math-220k
 dataset_test_split: test
 dataset_prompt_column: problem
-system_prompt: "You are a helpful AI Assistant that provides well-reasoned and detailed responses."
+system_prompt: "You are a helpful AI Assistant that provides well-reasoned and detailed responses.You first think about the reasoning process as an internal monologue and then provide the user with the answer."
 
 # GRPO trainer config
 beta: 0.0
@@ -35,12 +35,12 @@ logging_strategy: steps
 loss_type: grpo
 #scale_rewards: true
 max_prompt_length: 512
-max_completion_length: 3072
+max_completion_length: 2048
 max_steps: 1500 #-1
 num_generations: 16
 num_generations_eval: 4
 num_train_epochs: 1
-output_dir: /pfs/work9/workspace/scratch/ma_llincke-Results_Qwen2.5-1.5B-Instruct/GRPO-MATH12k-0320-constlr
+output_dir: /pfs/work9/workspace/scratch/ma_llincke-Results_Qwen2.5-1.5B-Instruct/GRPO-MATH12k-0313-constlr
 overwrite_output_dir: true
 per_device_train_batch_size: 4
 steps_per_generation: 16
@@ -48,7 +48,7 @@ push_to_hub: false
 report_to:
 - wandb
 wandb_project: open-r1-LLM_finetuning        # <-- Projektname in wandb
-run_name: Qwen2.5-1.5B-Instruct-GRPO-MATH12k-offpolicy4_shortersp # <-- Name des Runs
+run_name: Qwen2.5-1.5B-Instruct-GRPO-MATH12k-offpolicy4  # <-- Name des Runs
 reward_funcs:
 - accuracy
 reward_weights:
