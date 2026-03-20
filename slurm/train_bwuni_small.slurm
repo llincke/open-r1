@@ -1,13 +1,13 @@
 #!/bin/bash
-#SBATCH --job-name=0312_qwen2.5-1.5B-grpo-offpolicy
+#SBATCH --job-name=test_run 
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:4
-#SBATCH --partition=gpu_a100_il,gpu_h100_il,gpu_h100
+#SBATCH --partition=gpu_a100_short
 #SBATCH --output=./logs/%x-%j.out
 #SBATCH --error=./logs/%x-%j.err
 #SBATCH --requeue
-#SBATCH --time=24:00:00
+#SBATCH --time=00:30:00
 #SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH --mail-user=lele-2002@t-online.de
 
