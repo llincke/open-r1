@@ -2,50 +2,63 @@
 model_name_or_path: Qwen/Qwen2.5-1.5B-Instruct
 model_revision: main
 torch_dtype: bfloat16
-attn_implementation: sdpa          # flash_attn deinstalliert
+attn_implementation: sdpa  # flash_attn deinstalliert
 
 # Data training arguments
-dataset_name: open-r1/OpenR1-Math-220k
+dataset_name: hiyouga/math12k #open-r1/OpenR1-Math-220k
+dataset_test_split: test
 dataset_prompt_column: problem
 system_prompt: "You are a helpful AI Assistant that provides well-reasoned and detailed responses. You first think about the reasoning process as an internal monologue and then provide the user with the answer. Respond in the following format: <think>\n...\n</think>\n<answer>\n...\n</answer>"
 
 # GRPO trainer config
+beta: 0.0
+epsilon: 0.2
 bf16: true
 use_vllm: true
-do_eval: false
+vllm_mode: colocate
+vllm_gpu_memory_utilization: 0.5
+vllm_tensor_parallel_size: 1
+do_eval: true #false
+eval_strategy: steps
+eval_steps: 50
 gradient_accumulation_steps: 4
 gradient_checkpointing: true
 gradient_checkpointing_kwargs:
   use_reentrant: false
-learning_rate: 2.0e-05
+learning_rate: 1.0e-06
+lr_scheduler_type: constant #cosine
 log_completions: true
 log_level: info
 logging_first_step: true
-logging_steps: 1
+logging_steps: 50
 logging_strategy: steps
-lr_scheduler_type: cosine
+loss_type: grpo
+#scale_rewards: true
 max_prompt_length: 512
-max_completion_length: 1024
-max_steps: -1
+max_completion_length: 2048
+max_steps: 2000 #-1
 num_generations: 16
+num_generations_eval: 4
 num_train_epochs: 1
-output_dir: /home/ma/ma_ma/ma_llincke/open-r1/data/Qwen2.5-1.5B-GRPO-fullrun
+output_dir: /pfs/work9/workspace/scratch/ma_llincke-Results_Qwen2.5-1.5B-Instruct/Training_name
 overwrite_output_dir: true
 per_device_train_batch_size: 4
+#steps_per_generation: 16
 push_to_hub: false
 report_to:
 - wandb
 wandb_project: open-r1-LLM_finetuning        # <-- Projektname in wandb
-run_name: Qwen2.5-1.5B-GRPO-run1   # <-- Name des Runs
+run_name: Qwen2.5-1.5B-Instruct-GRPO-MATH12k-onpolicy  # <-- Name des Runs
 reward_funcs:
 - accuracy
-- format
-- tag_count
+#- format
+#- tag_count
 reward_weights:
 - 1.0
-- 1.0
-- 1.0
-save_strategy: "epoch"
-save_total_limit: 2
+#- 1.0
+#- 1.0
+save_strategy: "steps"
+save_steps: 50  # Same as eval_steps to save at every evaluation
+save_total_limit: 5  # Keep more checkpoints for model selection
 seed: 42
 warmup_ratio: 0.1
