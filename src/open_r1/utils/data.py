@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 
 import datasets
 from datasets import DatasetDict, concatenate_datasets
@@ -18,9 +19,11 @@ def get_dataset(args: ScriptArguments) -> DatasetDict:
     Returns:
         DatasetDict: The loaded datasets.
     """
+    dataset_dict: Optional[DatasetDict] = None
+
     if args.dataset_name and not args.dataset_mixture:
         logger.info(f"Loading dataset: {args.dataset_name}")
-        return datasets.load_dataset(args.dataset_name, args.dataset_config)
+        dataset_dict = datasets.load_dataset(args.dataset_name, args.dataset_config)
     elif args.dataset_mixture:
         logger.info(f"Creating dataset mixture with {len(args.dataset_mixture.datasets)} datasets")
         seed = args.dataset_mixture.seed
@@ -55,11 +58,30 @@ def get_dataset(args: ScriptArguments) -> DatasetDict:
                 logger.info(
                     f"Split dataset into train and test sets with test size: {args.dataset_mixture.test_split_size}"
                 )
-                return combined_dataset
+                dataset_dict = combined_dataset
             else:
-                return DatasetDict({"train": combined_dataset})
+                dataset_dict = DatasetDict({"train": combined_dataset})
         else:
             raise ValueError("No datasets were loaded from the mixture configuration")
 
     else:
         raise ValueError("Either `dataset_name` or `dataset_mixture` must be provided")
+
+    if args.dataset_eval_name:
+        logger.info(
+            "Loading separate evaluation dataset %s (config=%s)", args.dataset_eval_name, args.dataset_eval_config
+        )
+        eval_dataset = datasets.load_dataset(args.dataset_eval_name, args.dataset_eval_config)
+        eval_split = args.dataset_eval_split or args.dataset_test_split
+        if eval_split not in eval_dataset:
+            raise ValueError(
+                f"Split '{eval_split}' not found in evaluation dataset '{args.dataset_eval_name}'."
+            )
+        dataset_dict[args.dataset_test_split] = eval_dataset[eval_split]
+    elif args.dataset_test_split not in dataset_dict:
+        raise ValueError(
+            f"Split '{args.dataset_test_split}' not found in dataset '{args.dataset_name}'. "
+            "Provide `dataset_eval_name` or adjust `dataset_test_split`."
+        )
+
+    return dataset_dict

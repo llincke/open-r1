@@ -70,6 +70,22 @@ class ScriptArguments(trl.ScriptArguments):
     dataset_name: Optional[str] = field(
         default=None, metadata={"help": "Dataset name. Can be omitted if using dataset_mixture."}
     )
+    dataset_eval_name: Optional[str] = field(
+        default=None,
+        metadata={"help": "Optional dataset name to use exclusively for evaluation."},
+    )
+    dataset_eval_config: Optional[str] = field(
+        default=None,
+        metadata={"help": "Optional config for the evaluation dataset."},
+    )
+    dataset_eval_split: str = field(
+        default="test",
+        metadata={"help": "Split to use from dataset_eval_name when provided."},
+    )
+    dataset_eval_prompt_column: Optional[str] = field(
+        default=None,
+        metadata={"help": "Prompt column to use for the evaluation dataset when it differs from training."},
+    )
     dataset_mixture: Optional[dict[str, Any]] = field(
         default=None,
         metadata={"help": "Configuration for creating dataset mixtures with advanced options like shuffling."},

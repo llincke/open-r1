@@ -37,15 +37,61 @@ from .utils.competitive_programming import score_submission as cf_score_submissi
 from .utils.competitive_programming import score_subtask
 
 
-def accuracy_reward(completions: list[list[dict[str, str]]], solution: list[str], **kwargs) -> list[Optional[float]]:
-    """Reward function that checks if the completion is the same as the ground truth."""
+def accuracy_reward(completions: list[list[dict[str, str]]], solution: Optional[list[str]] = None, answer: Optional[list[str]] = None, **kwargs) -> list[Optional[float]]:
+    """Reward function that checks if the completion is the same as the ground truth.
+
+    Accepts either a `solution` or `answer` keyword (some datasets use `answer` instead of `solution`).
+    If neither is provided the function will return a list of `None` to indicate examples should be skipped.
+    """
+    # allow fallback column names: explicit arg > kwargs > alternative name
+    if solution is None:
+        solution = kwargs.get("solution") or answer or kwargs.get("answer")
+
     contents = [completion[0]["content"] for completion in completions]
     rewards = []
+    if solution is None:                                                       
+        # No ground-truth column provided; skip all examples                    
+        return [None] * len(contents)                                               
+
     for content, sol in zip(contents, solution):
+        # small preprocessing to handle common dataset formatting quirks
+        s = sol.strip() if isinstance(sol, str) else sol
+        # unwrap \text{...} which frequently appears in multiple-choice
+        m = re.match(r"^\\text\{(.+)\}$", s)
+        if m:
+            s = m.group(1)
+        # normalize common macro variants
+        s = s.replace("\\dfrac", "\\frac")
+
         gold_parsed = parse(
-            sol,
+            s,
             extraction_mode="first_match",
+            extraction_config=[
+                LatexExtractionConfig(
+                    normalization_config=NormalizationConfig(
+                        nits=False,
+                        malformed_operators=True,
+                        basic_latex=True,
+                        equations=True,
+                        boxed="all",
+                        units=True,
+                    ),
+                    # Ensures that boxed is tried first
+                    boxed_match_priority=0,
+                    try_extract_without_anchor=True,
+                )
+            ],
         )
+
+        # If parse failed, try a last-ditch attempt by wrapping in $...$
+        if len(gold_parsed) == 0:
+            try_s = f"${s}$"
+            gold_parsed = parse(
+                try_s,
+                extraction_mode="first_match",
+                extraction_config=[LatexExtractionConfig()],
+            )
+
         if len(gold_parsed) != 0:
             # We require the answer to be provided in correct latex (no malformed operators)
             answer_parsed = parse(
@@ -75,8 +121,24 @@ def accuracy_reward(completions: list[list[dict[str, str]]], solution: list[str]
                 reward = None
         else:
             # If the gold solution is not parseable, we assign `None` to skip this example
+            # Fallback for short/non-math gold answers (e.g. single-letter choices like 'D' or 'i')
+            # Try basic token match between normalized gold and completion
             reward = None
-            print("Failed to parse gold solution: ", sol)
+            short_token = None
+            if isinstance(s, str) and len(s) <= 4 and re.match(r"^[A-Za-z0-9]$", s):
+                short_token = s
+
+            if short_token is not None:
+                # strip common wrappers from completion and look for the token
+                comp = re.sub(r"\\\\boxed\{(.+?)\}", r"\1", content)
+                # search for exact token word
+                m2 = re.search(rf"\b{re.escape(short_token)}\b", comp)
+                if m2:
+                    reward = 1.0
+                else:
+                    reward = 0.0
+            else:
+                print("Failed to parse gold solution: ", sol)
         rewards.append(reward)
 
     return rewards
@@ -209,7 +271,7 @@ def get_cosine_scaled_reward(
     max_value_correct: float = 1.0,
     max_len: int = 1000,
 ):
-    def cosine_scaled_reward(completions, solution, **kwargs):
+    def cosine_scaled_reward(completions, solution: Optional[list[str]] = None, answer: Optional[list[str]] = None, **kwargs):
         """Reward function that scales based on completion length using a cosine schedule.
 
         Shorter correct solutions are rewarded more than longer ones.
@@ -226,8 +288,15 @@ def get_cosine_scaled_reward(
             max_value_correct: Maximum reward for correct answers
             max_len: Maximum length for scaling
         """
+        # accept either solution or answer column names
+        if solution is None:
+            solution = kwargs.get("solution") or answer or kwargs.get("answer")
+
         contents = [completion[0]["content"] for completion in completions]
         rewards = []
+        if solution is None:
+            # No ground-truth column provided; skip all examples
+            return [None] * len(contents)
 
         for content, sol in zip(contents, solution):
             gold_parsed = parse(
@@ -236,8 +305,25 @@ def get_cosine_scaled_reward(
                 extraction_config=[LatexExtractionConfig()],
             )
             if len(gold_parsed) == 0:
-                rewards.append(1.0)  # Skip unparseable examples
-                print("Failed to parse gold solution: ", sol)
+                # preprocessing and fallback like other rewards
+                s = sol.strip() if isinstance(sol, str) else sol
+                m = re.match(r"^\\text\{(.+)\}$", s)
+                if m:
+                    s = m.group(1)
+                s = s.replace("\\dfrac", "\\frac")
+                gold_parsed = parse(f"${s}$", extraction_mode="first_match", extraction_config=[LatexExtractionConfig()])
+            if len(gold_parsed) == 0:
+                # For unparseable short tokens, try to match directly
+                short_token = None
+                if isinstance(sol, str) and len(sol.strip()) <= 4 and re.match(r"^[A-Za-z0-9]$", sol.strip()):
+                    short_token = sol.strip()
+                if short_token is not None:
+                    comp = re.sub(r"\\\\boxed\{(.+?)\}", r"\1", content)
+                    m2 = re.search(rf"\b{re.escape(short_token)}\b", comp)
+                    rewards.append(1.0 if m2 else 0.0)
+                else:
+                    rewards.append(1.0)  # Skip unparseable examples
+                    print("Failed to parse gold solution: ", sol)
                 continue
 
             answer_parsed = parse(
